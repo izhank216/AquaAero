@@ -19,16 +19,19 @@ jobs:
 
     - name: Set up C++ Build Environment (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get update && sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev unicorn
 
     - name: Set up C++ Build Environment (Windows)
       if: matrix.os == 'windows-latest'
       uses: microsoft/setup-msbuild@v2
+      with:
+        vs-version: 'latest'
+      # You may need to install vcpkg and dependencies for SDL2, Vulkan, Unicorn manually
 
     - name: Set up C++ Build Environment (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install cmake sdl2 vulkan-volk
+        brew install cmake sdl2 sdl2_image vulkan-volk unicorn
         echo "export VULKAN_SDK=/usr/local/opt/vulkan-volk" >> $GITHUB_ENV
         echo "export PATH=$VULKAN_SDK/bin:$PATH" >> $GITHUB_ENV
         echo "export CMAKE_PREFIX_PATH=$VULKAN_SDK:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
@@ -41,8 +44,10 @@ jobs:
 
     - name: Build
       run: |
-        if [ $RUNNER_OS == "Windows" ]; then
+        if [ "$RUNNER_OS" == "Windows" ]; then
           cmake --build build --config Release
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          cmake --build build -- -j$(sysctl -n hw.logicalcpu)
         else
           cmake --build build -- -j$(nproc)
         fi
