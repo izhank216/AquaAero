@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <vulkan/vulkan.h>
 
 namespace fs = std::filesystem;
 
@@ -21,7 +22,7 @@ struct Game {
 
 std::vector<Game> games;
 
-// GameCube framebuffer size
+// GameCube framebuffer
 const int fbWidth = 640;
 const int fbHeight = 528;
 uint32_t framebuffer[fbWidth * fbHeight] = {0};
@@ -30,9 +31,9 @@ uint32_t framebuffer[fbWidth * fbHeight] = {0};
 const int audioSampleRate = 44100;
 uint8_t audioBuffer[audioSampleRate * 4] = {0};
 
-// RGBA4 -> RGBA8 conversion for banner
+// RGBA4 -> RGBA8 conversion
 void RGBA4toRGBA8(const uint16_t* src, uint8_t* dst, int pixels) {
-    for(int i = 0; i < pixels; i++) {
+    for(int i=0;i<pixels;i++){
         uint16_t val = src[i];
         dst[i*4+0] = ((val>>12)&0xF)*17;
         dst[i*4+1] = ((val>>8)&0xF)*17;
@@ -41,7 +42,7 @@ void RGBA4toRGBA8(const uint16_t* src, uint8_t* dst, int pixels) {
     }
 }
 
-// Load ISO banner
+// Load banner
 SDL_Texture* loadBanner(SDL_Renderer* renderer, const std::string& isoPath) {
     std::ifstream file(isoPath,std::ios::binary);
     if(!file.is_open()) return nullptr;
@@ -60,30 +61,70 @@ SDL_Texture* loadBanner(SDL_Renderer* renderer, const std::string& isoPath) {
     return texture;
 }
 
-// Audio callback (simple silence for now, DSP can be integrated later)
-void audioCallback(void* userdata, Uint8* stream, int len) {
+// Audio callback
+void audioCallback(void* userdata, Uint8* stream, int len){
     memset(stream,0,len);
-    // Later: mix DSP audio output here
+    // Later: mix DSP output
 }
 
 int gui_main() {
     if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER|SDL_INIT_GAMECONTROLLER|SDL_INIT_AUDIO)!=0) return -1;
 
-    // Setup audio
+    // Audio
     SDL_AudioSpec spec{};
     spec.freq = audioSampleRate;
     spec.format = AUDIO_F32SYS;
     spec.channels = 2;
     spec.samples = 4096;
     spec.callback = audioCallback;
-    SDL_OpenAudio(&spec, nullptr);
-    SDL_PauseAudio(0); // Start audio playback
+    SDL_OpenAudio(&spec,nullptr);
+    SDL_PauseAudio(0);
 
     // Vulkan window
-    SDL_Window* window = SDL_CreateWindow("AquaAero Emulator", 
+    SDL_Window* window = SDL_CreateWindow("AquaAero Emulator",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768, SDL_WINDOW_VULKAN);
-    SDL_Renderer* renderer = SDL_CreateRenderer(window,-1,SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
+    // Vulkan setup
+    VkInstance instance;
+    VkSurfaceKHR surface;
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+    VkDevice device;
+    VkQueue graphicsQueue;
+    VkSwapchainKHR swapchain;
+    VkFormat swapchainFormat;
+    std::vector<VkImage> swapchainImages;
+    std::vector<VkImageView> swapchainImageViews;
+
+    // 1️⃣ Create instance
+    VkApplicationInfo appInfo{};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = "AquaAero Emulator";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1,0,0);
+    appInfo.pEngineName = "AquaAero Engine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1,0,0);
+    appInfo.apiVersion = VK_API_VERSION_1_1;
+
+    VkInstanceCreateInfo instInfo{};
+    instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    instInfo.pApplicationInfo = &appInfo;
+
+    if(vkCreateInstance(&instInfo,nullptr,&instance)!=VK_SUCCESS) {
+        std::cerr << "Failed to create Vulkan instance\n";
+        return -1;
+    }
+
+    // 2️⃣ Create surface
+    if(!SDL_Vulkan_CreateSurface(window,instance,&surface)) {
+        std::cerr << "Failed to create Vulkan surface\n";
+        return -1;
+    }
+
+    // NOTE: Full Vulkan setup (device selection, swapchain, render pass, pipelines) 
+    // is very long and complex. Here we assume framebuffer will be drawn using 
+    // a Vulkan texture in the swapchain.
+
+    // Setup SDL Renderer for ImGui (we'll overlay GUI on top)
+    SDL_Renderer* renderer = SDL_CreateRenderer(window,-1,SDL_RENDERER_ACCELERATED|SDL_RENDERER_PRESENTVSYNC);
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui_ImplSDL2_InitForSDLRenderer(window,renderer);
@@ -97,8 +138,8 @@ int gui_main() {
     bool running = true;
     SDL_Event event;
 
-    while(running) {
-        while(SDL_PollEvent(&event)) {
+    while(running){
+        while(SDL_PollEvent(&event)){
             ImGui_ImplSDL2_ProcessEvent(&event);
             if(event.type==SDL_QUIT) running=false;
         }
@@ -109,44 +150,40 @@ int gui_main() {
 
         ImGui::Begin("Game List");
 
-        if(ImGui::Button("Add ISOs in Folder")) {
-            for(auto& p: fs::directory_iterator(".")) {
-                if(p.path().extension()==".iso") {
+        if(ImGui::Button("Add ISOs in Folder")){
+            for(auto& p: fs::directory_iterator(".")){
+                if(p.path().extension()==".iso"){
                     Game g;
                     g.path = p.path().string();
                     g.name = p.path().filename().string();
                     g.owner = "Unknown";
                     g.country = "Unknown";
-                    g.bannerTexture = loadBanner(renderer, g.path);
+                    g.bannerTexture = loadBanner(renderer,g.path);
                     games.push_back(g);
                 }
             }
         }
 
-        for(size_t i=0;i<games.size();i++) {
-            if(games[i].bannerTexture) {
-                ImGui::Image((void*)games[i].bannerTexture, ImVec2(96,32));
+        for(size_t i=0;i<games.size();i++){
+            if(games[i].bannerTexture){
+                ImGui::Image((void*)games[i].bannerTexture,ImVec2(96,32));
                 ImGui::SameLine();
             }
             std::string label = games[i].name + " | " + games[i].owner + " | " + games[i].country;
-            if(ImGui::Selectable(label.c_str())) {
-                // Load ISO metadata and DOL sections
+            if(ImGui::Selectable(label.c_str())){
                 emu.loadISO(games[i].path);
-                emu.loadDOLFromISO(); // Writes text/data sections into Unicorn memory
-
-                // Run the game
+                emu.loadDOLFromISO(); // Load text/data sections
                 emu.run();
             }
         }
 
         ImGui::End();
 
-        // Update Vulkan framebuffer (currently using SDL texture for simplicity)
+        // Update Vulkan framebuffer (for now we copy framebuffer to SDL texture)
         SDL_UpdateTexture(fbTexture,nullptr,framebuffer,fbWidth*4);
-
         SDL_SetRenderDrawColor(renderer,0,0,0,255);
         SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, fbTexture, nullptr, nullptr);
+        SDL_RenderCopy(renderer,fbTexture,nullptr,nullptr);
         ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
         SDL_RenderPresent(renderer);
     }
@@ -162,6 +199,9 @@ int gui_main() {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
+    vkDestroySurfaceKHR(instance,surface,nullptr);
+    vkDestroyInstance(instance,nullptr);
 
     return 0;
 }
