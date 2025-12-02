@@ -6,6 +6,7 @@
 #include "imgui_impl_sdlrenderer.h"
 #include <vector>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 
 namespace fs = std::filesystem;
@@ -50,7 +51,23 @@ int gui_main() {
                     g.name = p.path().filename().string();
                     g.owner = "Unknown";
                     g.country = "Unknown";
-                    emu.loadISO(g.path);
+
+                    // Load ISO into Unicorn memory now
+                    std::ifstream isoFile(g.path, std::ios::binary | std::ios::ate);
+                    if(isoFile.is_open()) {
+                        std::streamsize size = isoFile.tellg();
+                        isoFile.seekg(0, std::ios::beg);
+
+                        std::vector<char> buffer(size);
+                        if(isoFile.read(buffer.data(), size)) {
+                            // Map memory large enough to hold ISO
+                            uc_mem_map(emu.uc, 0x10000000, size, UC_PROT_ALL);
+                            uc_mem_write(emu.uc, 0x10000000, buffer.data(), size);
+                            std::cout << "Loaded " << g.name << " into Unicorn memory\n";
+                        }
+                        isoFile.close();
+                    }
+
                     games.push_back(g);
                 }
             }
@@ -59,8 +76,27 @@ int gui_main() {
         for(size_t i=0;i<games.size();i++) {
             std::string label = games[i].name + " | " + games[i].owner + " | " + games[i].country;
             if(ImGui::Selectable(label.c_str())) {
+                // Load ISO for selected game
                 emu.loadISO(games[i].path);
-                emu.run();
+
+                // Map and write full ISO to Unicorn memory
+                std::ifstream isoFile(games[i].path, std::ios::binary | std::ios::ate);
+                if(isoFile.is_open()) {
+                    std::streamsize size = isoFile.tellg();
+                    isoFile.seekg(0, std::ios::beg);
+
+                    std::vector<char> buffer(size);
+                    if(isoFile.read(buffer.data(), size)) {
+                        uc_mem_map(emu.uc, 0x10000000, size, UC_PROT_ALL);
+                        uc_mem_write(emu.uc, 0x10000000, buffer.data(), size);
+                    }
+                    isoFile.close();
+                }
+
+                // Set PC to start of ISO (simplified: real entry should come from DOL header)
+                uc_reg_write(emu.uc, UC_PPC_REG_PC, 0x10000000);
+
+                emu.run(); // Run the game
             }
         }
 
