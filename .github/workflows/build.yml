@@ -17,17 +17,21 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Set up C++ Build Environment
+    - name: Set up C++ Build Environment (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get update && sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev
 
-    - name: Set up C++ Build Environment
+    - name: Set up C++ Build Environment (Windows)
       if: matrix.os == 'windows-latest'
       uses: microsoft/setup-msbuild@v2
 
-    - name: Set up C++ Build Environment
+    - name: Set up C++ Build Environment (macOS)
       if: matrix.os == 'macos-latest'
-      run: brew install cmake sdl2 vulkan-sdk
+      run: |
+        brew install cmake sdl2 vulkan-volk
+        echo "export VULKAN_SDK=/usr/local/opt/vulkan-volk" >> $GITHUB_ENV
+        echo "export PATH=$VULKAN_SDK/bin:$PATH" >> $GITHUB_ENV
+        echo "export CMAKE_PREFIX_PATH=$VULKAN_SDK:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
 
     - name: Create build directory
       run: mkdir -p build
@@ -36,15 +40,20 @@ jobs:
       run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 
     - name: Build
-      run: cmake --build build --config Release -- -j$(nproc)
+      run: |
+        if [ $RUNNER_OS == "Windows" ]; then
+          cmake --build build --config Release
+        else
+          cmake --build build -- -j$(nproc)
+        fi
 
     - name: Package
       run: |
         mkdir -p release
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
+        if [ "$RUNNER_OS" == "Windows" ]; then
           cp build/Release/AquaAero.exe release/
           powershell Compress-Archive -Path release\* -DestinationPath AquaAero-Windows.zip
-        elif [[ "$RUNNER_OS" == "Linux" ]]; then
+        elif [ "$RUNNER_OS" == "Linux" ]; then
           cp build/AquaAero release/
           zip -r AquaAero-Linux.zip release/
         else
