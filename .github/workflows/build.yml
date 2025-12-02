@@ -3,7 +3,7 @@ name: Build AquaAero Emulator
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*' # Build on version tags, e.g., v1.0.0
   workflow_dispatch:
 
 jobs:
@@ -17,12 +17,27 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
+    # ------------------- Download ImGui -------------------
+    - name: Download ImGui
+      run: |
+        if [ "$RUNNER_OS" != "Windows" ]; then
+          # Linux/macOS
+          if [ ! -d "thirdparty/imgui" ]; then
+            mkdir -p thirdparty
+            git clone https://github.com/ocornut/imgui.git thirdparty/imgui
+          fi
+        else
+          # Windows (PowerShell)
+          if (-Not (Test-Path "thirdparty/imgui")) {
+            New-Item -ItemType Directory -Path thirdparty
+            git clone https://github.com/ocornut/imgui.git thirdparty/imgui
+          }
+        fi
+
     # ------------------- Ubuntu -------------------
     - name: Set up C++ Build Environment (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev libunicorn-dev git
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev unicorn
 
     # ------------------- Windows -------------------
     - name: Set up C++ Build Environment (Windows)
@@ -38,7 +53,6 @@ jobs:
         cd vcpkg
         .\bootstrap-vcpkg.bat
         .\vcpkg install sdl2 sdl2-image vulkan-sdk unicorn:x64-windows
-        .\vcpkg integrate install
         cd ..
         echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
 
@@ -46,18 +60,10 @@ jobs:
     - name: Set up C++ Build Environment (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install cmake sdl2 sdl2_image vulkan-volk unicorn git
+        brew install cmake sdl2 sdl2_image vulkan-volk unicorn
         echo "export VULKAN_SDK=/usr/local/opt/vulkan-volk" >> $GITHUB_ENV
         echo "export PATH=$VULKAN_SDK/bin:$PATH" >> $GITHUB_ENV
-        echo "export CMAKE_PREFIX_PATH=/usr/local/opt/sdl2_image:/usr/local/opt/unicorn:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
-
-    # ------------------- Download ImGui -------------------
-    - name: Download ImGui
-      run: |
-        if [ ! -d "thirdparty/imgui" ]; then
-          mkdir -p thirdparty
-          git clone https://github.com/ocornut/imgui.git thirdparty/imgui
-        fi
+        echo "export CMAKE_PREFIX_PATH=$VULKAN_SDK:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
 
     # ------------------- Build -------------------
     - name: Create build directory
@@ -66,9 +72,9 @@ jobs:
     - name: Configure CMake
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake -DIMGUI_DIR=$GITHUB_WORKSPACE/thirdparty/imgui
         else
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DIMGUI_DIR=$GITHUB_WORKSPACE/thirdparty/imgui
         fi
 
     - name: Build
