@@ -20,7 +20,9 @@ jobs:
     # ------------------- Ubuntu -------------------
     - name: Set up C++ Build Environment (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
-      run: sudo apt-get update && sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev unicorn
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev libunicorn-dev
 
     # ------------------- Windows -------------------
     - name: Set up C++ Build Environment (Windows)
@@ -36,6 +38,7 @@ jobs:
         cd vcpkg
         .\bootstrap-vcpkg.bat
         .\vcpkg install sdl2 sdl2-image vulkan-sdk unicorn:x64-windows
+        .\vcpkg integrate install
         cd ..
         echo "VCPKG_ROOT=$PWD/vcpkg" >> $GITHUB_ENV
 
@@ -46,8 +49,9 @@ jobs:
         brew install cmake sdl2 sdl2_image vulkan-volk unicorn
         echo "export VULKAN_SDK=/usr/local/opt/vulkan-volk" >> $GITHUB_ENV
         echo "export PATH=$VULKAN_SDK/bin:$PATH" >> $GITHUB_ENV
-        echo "export CMAKE_PREFIX_PATH=$VULKAN_SDK:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+        echo "export CMAKE_PREFIX_PATH=/usr/local/opt/sdl2_image:/usr/local/opt/unicorn:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
 
+    # ------------------- Build -------------------
     - name: Create build directory
       run: mkdir -p build
 
@@ -69,6 +73,7 @@ jobs:
           cmake --build build -- -j$(nproc)
         fi
 
+    # ------------------- Package -------------------
     - name: Package
       run: |
         mkdir -p release
@@ -83,6 +88,7 @@ jobs:
           zip -r AquaAero-macOS.zip release/
         fi
 
+    # ------------------- Upload Release -------------------
     - name: Upload Release Asset
       uses: softprops/action-gh-release@v1
       with:
