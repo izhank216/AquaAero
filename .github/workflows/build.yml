@@ -3,7 +3,7 @@ name: Build AquaAero Emulator
 on:
   push:
     tags:
-      - 'v*' # Build on version tags, e.g., v1.0.0
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -22,7 +22,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev libunicorn-dev
+        sudo apt-get install -y build-essential cmake libvulkan-dev libsdl2-dev libsdl2-image-dev libunicorn-dev git
 
     # ------------------- Windows -------------------
     - name: Set up C++ Build Environment (Windows)
@@ -46,10 +46,18 @@ jobs:
     - name: Set up C++ Build Environment (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install cmake sdl2 sdl2_image vulkan-volk unicorn
+        brew install cmake sdl2 sdl2_image vulkan-volk unicorn git
         echo "export VULKAN_SDK=/usr/local/opt/vulkan-volk" >> $GITHUB_ENV
         echo "export PATH=$VULKAN_SDK/bin:$PATH" >> $GITHUB_ENV
         echo "export CMAKE_PREFIX_PATH=/usr/local/opt/sdl2_image:/usr/local/opt/unicorn:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+
+    # ------------------- Download ImGui -------------------
+    - name: Download ImGui
+      run: |
+        if [ ! -d "thirdparty/imgui" ]; then
+          mkdir -p thirdparty
+          git clone https://github.com/ocornut/imgui.git thirdparty/imgui
+        fi
 
     # ------------------- Build -------------------
     - name: Create build directory
